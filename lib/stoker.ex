@@ -1,4 +1,6 @@
 defmodule Stoker do
+  require Logger
+
   @moduledoc """
   Documentation for `Stoker`.
   """
