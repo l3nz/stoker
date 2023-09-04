@@ -2,10 +2,61 @@ defmodule Stoker.Activator do
   require Logger
 
   @moduledoc """
-  Documentation for `Stoker`.
+  This GenServer is used to make sure that a process will
+  always - and once - be active in the cluster.
+
+  The way this works is that we use the  `:global` naming
+  service as a mutex - if the name {Activator, YourModule} can be registered,
+  then this server runs the "correct" activator.
+
+  If it cannot be registered, this means somebody else is holding it
+  - so we put a monitor on the process who actually registered the name,
+  and when it dies, we try registering instead.
+
+  On every application, its Activator (or Activators) are always
+  started once per server, so they "idle" ones will just be waiting
+  for their turn to take over. If a new server joins a healthy cluster,
+  its Activator will simply be waiting.
+
+  Once achieved, the only way to lose one's :master status is by
+  death, or disconnection from the main cluster.
+
+  TODO: Decommissioning and cluster limits
+
+
+  ## The Stoker callback
+
+  A module implementing the Stoker callback will be called
+  when some of these events happen:
+
+  - A GenServer becomes master
+  - A node joins or leaves the cluster
+  - Every few minutes
+
+  ## The state
+
+  This GenServer has a state that can be queried by using the
+  `dump/1` system call.
+
+  It contains:
+
+  - `module`: the Stoker module to be called back. This is the
+  same module that the Activator is registered under.
+  - `mod_state`: a provate state for the Stoker module. This state is
+   per-machine - this means that when another node becomes :master,
+  - `state`:  :unk,
+  - `created_at`: When this GenServer was started (even if not :master)
+  - `active_from`:  When this GenServer became :master, or nil
+  - `pid`:  The current PID, when :master
+  - `monitor`:  The monitor reference to the current :master, if not :master
+  - `current_node`: The name of the current node.
+
+
   """
   use GenServer
   require Logger
+
+  @type level :: :info | :warning | :error
 
   def dump(p) when is_pid(p) do
     GenServer.call(p, :dump)
@@ -23,13 +74,24 @@ defmodule Stoker.Activator do
   def init(%{module: module}) do
     Process.flag(:trap_exit, true)
 
+    IO.puts("Modue #{i(module)}")
+    {:ok, initial_mod_state} = module.init()
+
+    next_timer =
+      initial_mod_state
+      |> module.next_timer_in()
+      |> build_timer()
+
     state = %{
       module: module,
+      mod_state: initial_mod_state,
       state: :unk,
-      active_from: 0,
-      pid: nil,
-      monitor: nil,
-      current_node: Node.self()
+      current_node: Node.self(),
+      created_at: DateTime.utc_now(),
+      active_from: nil,
+      monitor_pid: nil,
+      monitor_ref: nil,
+      timer_ref: next_timer
     }
 
     {:ok, register(state)}
@@ -41,18 +103,31 @@ defmodule Stoker.Activator do
   end
 
   @impl true
-  def handle_info({:DOWN, _ref, :process, _, _}, %{monitor: _mon_ref} = state) do
+  def handle_info({:DOWN, _ref, :process, _, _}, %{monitor_ref: _mon_ref} = state) do
     {:noreply, register(state)}
   end
 
-  def handle_info({:EXIT, _pid, :name_conflict}, %{pid: pid} = state) do
-    :ok = Supervisor.stop(pid, :shutdown)
-    {:stop, {:shutdown, :name_conflict}, Map.delete(state, :pid)}
+  def handle_info({:EXIT, _pid, :name_conflict}, state) do
+    # :ok = Supervisor.stop(pid, :shutdown)
+    {:stop, {:shutdown, :name_conflict}, state}
+  end
+
+  def handle_info(:tick, %{module: module} = state) do
+    new_state = event(state, :timer, :none)
+
+    next_timer =
+      new_state
+      |> module.next_timer_in()
+      |> build_timer()
+
+    {:noreply, %{new_state | timer_ref: next_timer}}
   end
 
   @impl true
-  def terminate(reason, %{pid: pid}) do
-    :ok = Supervisor.stop(pid, reason)
+  def terminate(reason, state) do
+    # :ok = Supervisor.stop(pid, reason)
+    new_state = event(state, :terminate, reason)
+    {reason, new_state}
   end
 
   def terminate(_, _), do: nil
@@ -74,7 +149,8 @@ defmodule Stoker.Activator do
   end
 
   defp started(state) do
-    %{state | pid: self(), state: :master}
+    new_state = event(state, :start)
+    %{new_state | state: :master, active_from: DateTime.utc_now()}
   end
 
   defp monitor(%{module: module} = state) do
@@ -84,7 +160,21 @@ defmodule Stoker.Activator do
 
       pid ->
         ref = Process.monitor(pid)
-        %{state | state: :waiting, pid: pid, monitor: ref}
+        %{state | state: :waiting, monitor_pid: pid, monitor_ref: ref}
     end
   end
+
+  @spec event(%{}, any, any) :: any
+  def event(%{module: module, mod_state: mod_state} = state, event, reason \\ :none) do
+    {:ok, new_mod_state} = module.event(event, reason, mod_state)
+    %{state | mod_state: new_mod_state}
+  end
+
+  defp i(term), do: inspect(term)
+
+  def build_timer(t) when is_integer(t) and t > 0 do
+    Process.send_after(self(), :tick, t)
+  end
+
+  def build_timer(_), do: nil
 end
