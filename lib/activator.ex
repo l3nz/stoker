@@ -53,10 +53,14 @@ defmodule Stoker.Activator do
 
 
   """
-  use GenServer
+  use GenServer, restart: :permanent
   require Logger
 
   @type level :: :info | :warning | :error
+
+  def start_link(module) when is_atom(module) do
+    GenServer.start_link(__MODULE__, %{module: module})
+  end
 
   def dump(p) when is_pid(p) do
     GenServer.call(p, :dump)

@@ -10,7 +10,7 @@
 
 Make sure epmd is up, and all other tests pass.
 
-	 mix test --only with_epm
+	 mix test --only with_epmd
 
 
 ## Misc checks
@@ -20,4 +20,7 @@ Make sure epmd is up, and all other tests pass.
 
 ## Publishing
 
-	
+Check version in mix.exs 
+
+	mix hex.publish
+
