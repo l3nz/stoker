@@ -17,6 +17,7 @@ Make sure epmd is up, and all other tests pass.
 
 	mix format
 	mix credo
+	mix dialyzer
 
 ## Publishing
 
