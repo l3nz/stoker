@@ -1,13 +1,15 @@
 # stoker
 Stoker makes sure your cluster keeps running
 
-[![Hex.pm](https://img.shields.io/hexpm/v/stoker.svg)]()
-[![Hex.pm](https://img.shields.io/hexpm/dt/stoker.svg)]()
-[![Hex.pm](https://img.shields.io/hexpm/dw/stoker.svg)]()
-[![Hex.pm](https://img.shields.io/hexpm/dd/stoker.svg)]()
+- __Stoker (plural stokers): A person who stokes, especially one on a steamship or steam train who stokes coal in the boilers. __
 
 
-- stoker (plural stokers): A person who stokes, especially one on a steamship or steam train who stokes coal in the boilers. 
+![Hex.pm](https://img.shields.io/hexpm/v/stoker)](https://hex.pm/packages/stoker)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/stoker)
+[![Hex.pm](https://img.shields.io/hexpm/dt/stoker)](https://hex.pm/packages/stoker)
+[![Hex.pm](https://img.shields.io/hexpm/l/stoker)](https://github.com/l3nz/stoker/blob/main/LICENSE)
+
+
 
 # Installing
 
