@@ -117,6 +117,12 @@ defmodule Stoker.Activator do
     {:stop, {:shutdown, :name_conflict}, state}
   end
 
+  def handle_info({:nodeup, _} = msg, state),
+    do: cluster_changed(state, msg)
+
+  def handle_info({:nodedown, _} = msg, state),
+    do: cluster_changed(state, msg)
+
   def handle_info(:tick, %{module: module} = state) do
     new_state = event(state, :timer, :none)
 
@@ -125,17 +131,21 @@ defmodule Stoker.Activator do
       |> module.next_timer_in()
       |> build_timer()
 
-    {:noreply, %{new_state | timer_ref: next_timer}}
+    {:noreply, %{new_state | timer_ref: next_timer}, :hibernate}
   end
 
   @impl true
   def terminate(reason, state) do
     # :ok = Supervisor.stop(pid, reason)
-    new_state = event(state, :terminate, reason)
+    new_state = event(state, :shutdown, reason)
     {reason, new_state}
   end
 
-  def terminate(_, _), do: nil
+  defp cluster_changed(state, change_reason) do
+    new_state = event(state, :cluster_change, change_reason)
+
+    {:noreply, new_state, :hibernate}
+  end
 
   defp name(%{module: module}) do
     {__MODULE__, module}
@@ -155,7 +165,10 @@ defmodule Stoker.Activator do
 
   defp started(state) do
     Logger.warn("Became Dear Leader")
-    new_state = event(state, :start)
+
+    # see https://stackoverflow.com/questions/49260444/in-elixir-how-can-i-get-notified-when-a-node-joins-or-leaves-the-cluster
+    :net_kernel.monitor_nodes(true)
+    new_state = event(state, :now_leader)
     %{new_state | state: :leader, active_from: DateTime.utc_now()}
   end
 
@@ -172,9 +185,17 @@ defmodule Stoker.Activator do
     end
   end
 
-  @spec event(%{}, any, any) :: any
+  @spec event(
+          %{:mod_state => any, :module => atom, optional(any) => any},
+          Stoker.activator_event(),
+          any
+        ) :: %{
+          :mod_state => any,
+          :module => atom,
+          optional(any) => any
+        }
   def event(%{module: module, mod_state: mod_state} = state, event, reason \\ :none) do
-    {:ok, new_mod_state} = module.event(event, reason, mod_state)
+    {:ok, new_mod_state} = module.event(mod_state, event, reason)
     %{state | mod_state: new_mod_state}
   end
 

@@ -49,6 +49,7 @@ defmodule Stoker do
   somewhere.
 
   #{uml("""
+    skinparam linetype ortho
 
     frame "Node 1" {
       Component [Application] as A1 #Yellow
@@ -208,16 +209,43 @@ defmodule Stoker do
   The life-cycle of a Stoker call-back is modelled on
   the one that a `GenServer` offers.
 
-  There is a state term that cna be used to store a
+  There is a state term that can be used to store a
   state to be held between multiple calls (but only on
   the same server - the state is not shared with followers).
+
+
+  #{uml("""
+
+    state fork_state <<fork>>
+    [*] --> fork_state
+    fork_state --> leader : now_leader
+    fork_state --> follower : now_follower
+    follower --> leader : now_leader
+    leader --> leader : cluster_change, timer, trigger
+    leader --> splitbrain : cluster_split
+    splitbrain --> leader : cluster_change
+    splitbrain --> [*] : shutdown
+    leader --> [*] : shutdown
+    follower --> [*] : shutdown
+
+
+  """)}
 
 
 
 
   """
+  @type activator_event ::
+          :now_leader
+          | :now_follower
+          | :cluster_change
+          | :cluster_split
+          | :timer
+          | :trigger
+          | :shutdown
+
   @type activator_state ::
-          :leader | :follower | :cluster_change | :cluster_split | :timer | :trigger | :shutdown
+          :leader | :follower
 
   @doc """
 
@@ -228,7 +256,7 @@ defmodule Stoker do
   @doc """
   """
 
-  @callback event(stoker_state :: term, reason :: term, state :: activator_state) ::
+  @callback event(stoker_state :: term, event_type :: activator_event, reason :: term) ::
               {:ok, new_state :: term}
               | {:error, reason :: term}
 

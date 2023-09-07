@@ -1,10 +1,14 @@
 defmodule StokerClusterTest do
+  # test/stoker_cluster_test.exs:146
   require Logger
   use ExUnit.Case, async: false
   doctest Stoker
 
+  def small_sleep(), do: :timer.sleep(100)
+
   @tag :with_epmd
-  test "Let's learn how LOcal Cluster works" do
+  test "Let's learn how Local Cluster works", %{module: mod, test: name} do
+    Logger.error("=== #{mod}: Starting #{name}")
     :ok = LocalCluster.start()
     nodes = LocalCluster.start_nodes("my-cluster", 3)
 
@@ -31,7 +35,8 @@ defmodule StokerClusterTest do
   end
 
   @tag :with_epmd
-  test "something else with a required cluster" do
+  test "something else with a required cluster", %{module: mod, test: name} do
+    Logger.error("=== #{mod}: Starting #{name}")
     :ok = LocalCluster.start()
 
     nodes =
@@ -79,12 +84,9 @@ defmodule StokerClusterTest do
       {:ok, %{mystate: 100, events: []}}
     end
 
-    def event(e, :none, state) do
+    def event(state, e, r) do
+      Logger.warn("Event #{inspect(e)} on #{inspect(Node.self())}")
       {:ok, %{state | mystate: state.mystate + 1, events: [e | state.events]}}
-    end
-
-    def event(e, r, state) do
-      {:ok, %{state | mystate: state.mystate + 1, events: [{e, r} | state.events]}}
     end
 
     def next_timer_in(_state), do: :none
@@ -99,21 +101,22 @@ defmodule StokerClusterTest do
       {:ok, %{mystate: 100, events: []}}
     end
 
-    def event(e, :none, state) do
+    def event(state, e, :none) do
       {:ok, %{state | mystate: state.mystate + 1, events: [e | state.events]}}
     end
 
-    def event(e, r, state) do
+    def event(state, e, r) do
       {:ok, %{state | mystate: state.mystate + 1, events: [{e, r} | state.events]}}
     end
 
-    def next_timer_in(_state), do: 50
+    def next_timer_in(_state), do: 20
 
     def cluster_valid?(_state), do: :yes
   end
 
   @tag :with_epmd
-  test "Stoker on a 2 cluster node" do
+  test "Stoker on a 2 cluster node", %{module: mod, test: name} do
+    Logger.error("=== #{mod}: Starting #{name}")
     :ok = LocalCluster.start()
 
     nodes =
@@ -125,28 +128,63 @@ defmodule StokerClusterTest do
 
     [node1, node2] = nodes
 
-    assert Node.ping(node1) == :pong
-    assert Node.ping(node2) == :pong
-
     spawn_remotely(node1, CBs)
     spawn_remotely(node2, CBs)
 
-    :timer.sleep(1000)
-    IO.puts(inspect(Stoker.Cluster.ps()))
+    small_sleep()
 
     %{current_node: n} = Stoker.Activator.dump(CBs)
+    Logger.error("Stopping node")
     :ok = LocalCluster.stop_nodes([n])
 
-    :timer.sleep(1000)
+    small_sleep()
     %{current_node: nn} = Stoker.Activator.dump(CBs)
 
-    IO.puts(inspect(%{prima: n, dopo: nn}))
+    assert n != nn, "Node changed"
 
     :ok = LocalCluster.stop()
   end
 
   @tag :with_epmd
-  test "Stoker on a 2 cluster node with timers" do
+  test "Stoker on a 2 cluster node, stopping other node", %{module: mod, test: name} do
+    Logger.error("=== #{mod}: Starting #{name}")
+    :ok = LocalCluster.start()
+
+    nodes =
+      LocalCluster.start_nodes("mcc", 2,
+        files: [
+          __ENV__.file
+        ]
+      )
+
+    [node1, node2] = nodes
+
+    spawn_remotely(node1, CBs)
+    spawn_remotely(node2, CBs)
+
+    small_sleep()
+    %{current_node: curr_node} = Stoker.Activator.dump(CBs)
+
+    otherNode =
+      nodes
+      |> Enum.filter(fn node -> node != curr_node end)
+      |> List.first()
+
+    Logger.error("Stopping other node")
+    :ok = LocalCluster.stop_nodes([otherNode])
+
+    small_sleep()
+    %{current_node: nn} = evts = Stoker.Activator.dump(CBs)
+
+    assert curr_node == nn, "Node not changed"
+    assert %{mod_state: %{events: [:cluster_change, :now_leader]}} = evts
+
+    :ok = LocalCluster.stop()
+  end
+
+  @tag :with_epmd
+  test "Stoker on a 2 cluster node with timers", %{module: mod, test: name} do
+    Logger.error("=== #{mod}: Starting #{name}")
     :ok = LocalCluster.start()
 
     nodes =
@@ -164,18 +202,19 @@ defmodule StokerClusterTest do
     spawn_remotely(node1, CB_Timer)
     spawn_remotely(node2, CB_Timer)
 
-    :timer.sleep(1000)
+    small_sleep()
 
     %{current_node: n, mod_state: %{events: evts}} = Stoker.Activator.dump(CB_Timer)
     # l'ultimo evento è un timer
     assert [:timer | _] = evts
 
+    Logger.error("Stopping node")
     :ok = LocalCluster.stop_nodes([n])
 
-    :timer.sleep(1000)
-    %{current_node: nn} = Stoker.Activator.dump(CB_Timer)
+    small_sleep()
+    %{current_node: nn} = _r = Stoker.Activator.dump(CB_Timer)
 
-    IO.puts(inspect(%{prima: n, dopo: nn}))
+    assert n != nn, "Node changed"
 
     :ok = LocalCluster.stop()
   end

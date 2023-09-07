@@ -14,11 +14,11 @@ defmodule StokerTest do
       {:ok, %{mystate: 100, events: []}}
     end
 
-    def event(e, :none, state) do
+    def event(state, e, :none) do
       {:ok, %{state | mystate: state.mystate + 1, events: [e | state.events]}}
     end
 
-    def event(e, r, state) do
+    def event(state, e, r) do
       {:ok, %{state | mystate: state.mystate + 1, events: [{e, r} | state.events]}}
     end
 
@@ -28,11 +28,12 @@ defmodule StokerTest do
   end
 
   test "Setup and destruction via callback" do
-    assert {:ok, %{mod_state: %{mystate: 101, events: [:start]}, module: StokerTest.CBs} = state0} =
+    assert {:ok,
+            %{mod_state: %{mystate: 101, events: [:leader]}, module: StokerTest.CBs} = state0} =
              Activator.init(%{module: CBs})
 
     assert {:shutdown,
-            %{mod_state: %{mystate: 102, events: [{:terminate, :shutdown}, :start]}} = _state1} =
+            %{mod_state: %{mystate: 102, events: [{:shutdown, :shutdown}, :leader]}} = _state1} =
              Activator.terminate(:shutdown, state0)
   end
 end
