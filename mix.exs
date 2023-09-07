@@ -27,6 +27,7 @@ defmodule Stoker.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:say_cheez_ex, "~> 0.3"},
       {:ex_doc, ">= 0.0.0", only: :dev, runtime: false},
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       # {:dep_from_hexpm, "~> 0.3.0"},

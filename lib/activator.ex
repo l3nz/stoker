@@ -18,7 +18,7 @@ defmodule Stoker.Activator do
   for their turn to take over. If a new server joins a healthy cluster,
   its Activator will simply be waiting.
 
-  Once achieved, the only way to lose one's :master status is by
+  Once achieved, the only way to lose one's :leader status is by
   death, or disconnection from the main cluster.
 
   TODO: Decommissioning and cluster limits
@@ -43,12 +43,12 @@ defmodule Stoker.Activator do
   - `module`: the Stoker module to be called back. This is the
   same module that the Activator is registered under.
   - `mod_state`: a provate state for the Stoker module. This state is
-   per-machine - this means that when another node becomes :master,
+   per-machine - this means that when another node becomes :leader,
   - `state`:  :unk,
-  - `created_at`: When this GenServer was started (even if not :master)
-  - `active_from`:  When this GenServer became :master, or nil
-  - `pid`:  The current PID, when :master
-  - `monitor`:  The monitor reference to the current :master, if not :master
+  - `created_at`: When this GenServer was started (even if not :leader)
+  - `active_from`:  When this GenServer became :leader, or nil
+  - `leader_pid`:  The current PID, when :leader
+  - `monitor_leader`:  The monitor reference to the current :leader, if not :leader
   - `current_node`: The name of the current node.
 
 
@@ -78,7 +78,8 @@ defmodule Stoker.Activator do
   def init(%{module: module}) do
     Process.flag(:trap_exit, true)
 
-    IO.puts("Modue #{i(module)}")
+    Logger.warn("Starting #{__MODULE__} relying on #{i(module)}")
+
     {:ok, initial_mod_state} = module.init()
 
     next_timer =
@@ -93,8 +94,8 @@ defmodule Stoker.Activator do
       current_node: Node.self(),
       created_at: DateTime.utc_now(),
       active_from: nil,
-      monitor_pid: nil,
-      monitor_ref: nil,
+      leader_pid: nil,
+      leader_ref: nil,
       timer_ref: next_timer
     }
 
@@ -107,7 +108,7 @@ defmodule Stoker.Activator do
   end
 
   @impl true
-  def handle_info({:DOWN, _ref, :process, _, _}, %{monitor_ref: _mon_ref} = state) do
+  def handle_info({:DOWN, _ref, :process, _, _}, %{leader_ref: _mon_ref} = state) do
     {:noreply, register(state)}
   end
 
@@ -153,8 +154,9 @@ defmodule Stoker.Activator do
   end
 
   defp started(state) do
+    Logger.warn("Became Dear Leader")
     new_state = event(state, :start)
-    %{new_state | state: :master, active_from: DateTime.utc_now()}
+    %{new_state | state: :leader, active_from: DateTime.utc_now()}
   end
 
   defp monitor(%{module: module} = state) do
@@ -163,8 +165,10 @@ defmodule Stoker.Activator do
         register(state)
 
       pid ->
-        ref = Process.monitor(pid)
-        %{state | state: :waiting, monitor_pid: pid, monitor_ref: ref}
+        with leader_ref <- Process.monitor(pid) do
+          Logger.warn("Is currently a follower of #{i(pid)}")
+          %{state | state: :follower, leader_pid: pid, leader_ref: leader_ref}
+        end
     end
   end
 
