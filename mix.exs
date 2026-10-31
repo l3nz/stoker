@@ -13,7 +13,8 @@ defmodule Stoker.MixProject do
       package: package(),
       elixir: "~> 1.13",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      docs: [formatters: ["html"]]
     ]
   end
 

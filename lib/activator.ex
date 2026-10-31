@@ -82,7 +82,7 @@ defmodule Stoker.Activator do
   end
 
   @doc """
-  Triggers an event of type `:timer` on `Stoker.event/3`.
+  Triggers an event of type `:trigger` on `c:Stoker.event/3`.
 
   You usually use:
 
