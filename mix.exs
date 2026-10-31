@@ -3,7 +3,7 @@ defmodule Stoker.MixProject do
 
   @source_url "https://github.com/l3nz/stoker"
   # "0.1.0-dev"
-  @version "0.1.3"
+  @version "0.2.0"
 
   def project do
     [
