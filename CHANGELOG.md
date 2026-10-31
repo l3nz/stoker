@@ -8,6 +8,8 @@
 * Replaced deprecated `Logger.warn/1` with `Logger.warning/2`; removed unused `require Logger`
 * Fixed outdated tests (`:now_leader` event, removed `Stoker.hello/0` test)
 * README: how to run the cluster tests (`mix test --include with_epmd`)
+* Dialyzer passes with no warnings on Elixir 1.20.5 / OTP 29
+* `mix docs` builds HTML only, no epub/markdown (#1); fixed callback reference in `Stoker.Activator.trigger/1` docs
 
 ## 0.1.3 (2023-09-07)
 
