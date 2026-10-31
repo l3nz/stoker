@@ -1,6 +1,5 @@
 defmodule Stoker do
   import SayCheezEx, only: [uml: 1]
-  require Logger
 
   @moduledoc """
   Stoker makes sure that your cluster keeps running, no matter
@@ -217,16 +216,19 @@ defmodule Stoker do
   #{uml("""
 
     state fork_state <<fork>>
+    state closing   <<join>>
+
     [*] --> fork_state
     fork_state --> leader : now_leader
     fork_state --> follower : now_follower
     follower --> leader : now_leader
-    leader --> leader : cluster_change, timer, trigger
+    leader --> leader : cluster_change\\ntimer\\ntrigger
     leader --> splitbrain : cluster_split
     splitbrain --> leader : cluster_change
-    splitbrain --> [*] : shutdown
-    leader --> [*] : shutdown
-    follower --> [*] : shutdown
+    splitbrain --> closing
+    leader --> closing
+    follower --> closing
+    closing --> [*] :  shutdown
 
 
   """)}
@@ -245,15 +247,49 @@ defmodule Stoker do
           | :shutdown
 
   @type activator_state ::
-          :leader | :follower
+          :leader | :follower | :netsplit
 
   @doc """
+  Create an initial stoker_state. This is called during the
+  init() phase of our GenServer, so on :error it will
+  crash the GenServer.
 
+  This is called on start on all Stoker instances.
   """
 
   @callback init() :: {:ok, stoker_state :: term} | {:error, reason :: term}
 
   @doc """
+  Something happened, so we need to make sure that everything
+  is as-expected.
+
+  We are passed a previous *stoker_state*, an *event type* and
+  (for some event types) a *reason*.
+
+  Usually at this point we should run the application code to
+  list all applications that should be up, and start them if
+  they are not up, and then return an updted *stoker_state*.
+
+  Known events:
+
+  - `:now_leader` - this Stoker is now a leader. This may happen because
+    it started as a leader, or a previous leader died.
+  - `:timer` - a timer chimed. After you complete this callback,
+    a new one will be called again as specified by `next_timer_in/1`.
+  - `:trigger` - an event was triggered manually by
+     calling `Stoker.Activator.trigger/1`.
+  - `:now_follower` - (currently never sent)
+  - `:cluster_change` - there was a change in the cluster composition,
+    as detailed in the reason. The cluster is considered healthy by
+    `cluster_valid?/1`, so you may ignore or take a chance to rebalance.
+  - `:cluster_split` - there was a change in the cluster composition,
+    and the cluster is considered invalid. You should terminate all
+    running processes, as you are supposed to be on the losing side
+    of a netsplit.
+  - `:shutdown` - the GenServer is being terminated. You usually don't
+     get this call in actual life, as a failing node might just terminate
+     with no warning. Don't realy on this message.
+
   """
 
   @callback event(stoker_state :: term, event_type :: activator_event, reason :: term) ::
@@ -261,11 +297,18 @@ defmodule Stoker do
               | {:error, reason :: term}
 
   @doc """
+  When the next timer event is to be rescheduled, in milliseconds.
+
+  As it is given the current *stoker_state*, you have a chance to
+  change the event triggering rate, if you want to.
+
+  If you return `:none` or `0` milliseconds, no further timer
+  is scheduled.
   """
 
   @callback next_timer_in(stoker_state :: term) :: integer() | :none
   @doc """
-  In front of a cluster change, determines whether
+  After a change in the cluster composition, determines whether
   we are on the losing side of a netsplit situation or not.
 
   For example, if we have a three node cluster, we may protect
@@ -284,17 +327,4 @@ defmodule Stoker do
 
   """
   @callback cluster_valid?(stoker_state :: term) :: :yes | :no | :cluster_split
-
-  @doc """
-  Hello world.
-
-  ## Examples
-
-      iex> Stoker.hello()
-      :world
-
-  """
-  def hello do
-    :world
-  end
 end

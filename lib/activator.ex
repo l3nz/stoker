@@ -1,6 +1,4 @@
 defmodule Stoker.Activator do
-  require Logger
-
   @moduledoc """
   This GenServer is used to make sure that a process will
   always - and once - be active in the cluster.
@@ -18,20 +16,23 @@ defmodule Stoker.Activator do
   for their turn to take over. If a new server joins a healthy cluster,
   its Activator will simply be waiting.
 
-  Once achieved, the only way to lose one's :leader status is by
+  Once achieved, the only way to lose one's `:leader` status is by
   death, or disconnection from the main cluster.
 
-  TODO: Decommissioning and cluster limits
+  A general overview of this process is given in the `Stoker` module
+  documentation.
 
 
   ## The Stoker callback
 
-  A module implementing the Stoker callback will be called
+  A module implementing the `Stoker` callback will be called
   when some of these events happen:
 
   - A GenServer becomes master
   - A node joins or leaves the cluster
   - Every few minutes
+  - When calling `trigger/1` e.g. from a  webservice
+    or another process.
 
   ## The state
 
@@ -62,12 +63,41 @@ defmodule Stoker.Activator do
     GenServer.start_link(__MODULE__, %{module: module})
   end
 
+  @doc """
+  Returns a dump of the internal state.
+
+  You usually use:
+
+      Activator.dump(MyModule)
+
+  For the current leader, or a PID  for followers.
+
+  """
   def dump(p) when is_pid(p) do
     GenServer.call(p, :dump)
   end
 
   def dump(module) when is_atom(module) do
     GenServer.call(whereis(module), :dump)
+  end
+
+  @doc """
+  Triggers an event of type `:timer` on `Stoker.event/3`.
+
+  You usually use:
+
+      Activator.trigger(MyModule)
+
+  For the current leader, or a PID  for followers.
+
+  """
+
+  def trigger(p) when is_pid(p) do
+    GenServer.call(p, :trigger)
+  end
+
+  def trigger(module) when is_atom(module) do
+    GenServer.call(whereis(module), :trigger)
   end
 
   def whereis(module) when is_atom(module) do
@@ -78,7 +108,7 @@ defmodule Stoker.Activator do
   def init(%{module: module}) do
     Process.flag(:trap_exit, true)
 
-    Logger.warn("Starting #{__MODULE__} relying on #{i(module)}")
+    Logger.warning("Starting #{__MODULE__} relying on #{i(module)}")
 
     {:ok, initial_mod_state} = module.init()
 
@@ -134,6 +164,12 @@ defmodule Stoker.Activator do
     {:noreply, %{new_state | timer_ref: next_timer}, :hibernate}
   end
 
+  def handle_info(:trigger, state) do
+    new_state = event(state, :trigger, :none)
+
+    {:noreply, new_state, :hibernate}
+  end
+
   @impl true
   def terminate(reason, state) do
     # :ok = Supervisor.stop(pid, reason)
@@ -164,7 +200,7 @@ defmodule Stoker.Activator do
   end
 
   defp started(state) do
-    Logger.warn("Became Dear Leader")
+    Logger.warning("Became Dear Leader")
 
     # see https://stackoverflow.com/questions/49260444/in-elixir-how-can-i-get-notified-when-a-node-joins-or-leaves-the-cluster
     :net_kernel.monitor_nodes(true)
@@ -179,7 +215,7 @@ defmodule Stoker.Activator do
 
       pid ->
         with leader_ref <- Process.monitor(pid) do
-          Logger.warn("Is currently a follower of #{i(pid)}")
+          Logger.warning("Is currently a follower of #{i(pid)}")
           %{state | state: :follower, leader_pid: pid, leader_ref: leader_ref}
         end
     end

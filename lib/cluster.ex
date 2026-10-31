@@ -1,6 +1,4 @@
 defmodule Stoker.Cluster do
-  require Logger
-
   @moduledoc """
   Functions to handle clusters.
   """

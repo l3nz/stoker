@@ -23,3 +23,15 @@ A list of changes can be found on the `CHANGELOG.md`
 
 API docs: https://hexdocs.pm/stoker/api-reference.html
 
+
+# Running tests
+
+The cluster tests start multiple local nodes, so they need a running `epmd`
+and are excluded by default. To run the full suite:
+
+```
+epmd -daemon
+mix test --include with_epmd
+```
+
+A plain `mix test` runs only the tests that don't need a cluster.

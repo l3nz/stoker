@@ -3,10 +3,6 @@ defmodule StokerTest do
   doctest Stoker
   alias Stoker.Activator
 
-  test "greets the world" do
-    assert Stoker.hello() == :world
-  end
-
   defmodule CBs do
     @behaviour Stoker
 
@@ -29,11 +25,11 @@ defmodule StokerTest do
 
   test "Setup and destruction via callback" do
     assert {:ok,
-            %{mod_state: %{mystate: 101, events: [:leader]}, module: StokerTest.CBs} = state0} =
+            %{mod_state: %{mystate: 101, events: [:now_leader]}, module: StokerTest.CBs} = state0} =
              Activator.init(%{module: CBs})
 
     assert {:shutdown,
-            %{mod_state: %{mystate: 102, events: [{:shutdown, :shutdown}, :leader]}} = _state1} =
+            %{mod_state: %{mystate: 102, events: [{:shutdown, :shutdown}, :now_leader]}} = _state1} =
              Activator.terminate(:shutdown, state0)
   end
 end
